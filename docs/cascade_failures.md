@@ -165,6 +165,43 @@ result["cascade_analysis"]["cascade_type"]  # e.g. "midchain_cascade"
 result["agent_chain"]                        # ordered per-agent step records
 ```
 
+## Cascade benchmark
+
+Every scenario run can be recorded as a row in a CSV file that serves as the
+seed of a cascade-failure benchmark. The loop is:
+
+1. take a prepared invoice from `cascade_scenarios.json`;
+2. run it through the real agent chain;
+3. classify the resulting cascade with `classify_cascade()`;
+4. append the run to `benchmarks/cascade_runs.csv`.
+
+```bash
+uv run python scripts/cascade_benchmark.py --list                     # scenario ids
+uv run python scripts/cascade_benchmark.py                            # all scenarios
+uv run python scripts/cascade_benchmark.py -s full_cascade_plausible --repeat 3
+uv run python scripts/cascade_benchmark.py --output path/to/runs.csv
+```
+
+Recording lives in
+[`finbot/agents/cascade_benchmark.py`](../finbot/agents/cascade_benchmark.py)
+(`build_benchmark_row()`, `append_benchmark_row()`, `load_benchmark_rows()`).
+Each row is self-contained: it stores the invoice payload, the expected and
+detected cascade type, `matches_expected`, the detected severity, the agent
+path (`invoice_agent>fraud_agent>...`), the first agent that showed an error,
+confidence metrics, the full agent chain as JSON, and the LLM provider/model,
+catalogue version and `CLASSIFIER_VERSION` that produced it. Runs that crash
+or in which no agent ran (e.g. every LLM call failed) are recorded too, with
+`detected_cascade_type = error` and the reason in `run_error`.
+
+Each run uses a fresh vendor in its own namespace (`active`, trust level
+`standard`; a scenario may override these with an optional
+`"vendor": {...}` block), so runs never see each other's invoices and
+`--repeat` produces independent samples. Bump `CLASSIFIER_VERSION` whenever the classification heuristics
+change, so older rows can be filtered or re-labelled.
+
+To add a scenario to the benchmark, add an entry to `cascade_scenarios.json`
+and run the script with its id.
+
 ## Relation to the rest of the platform
 
 The cascade module reuses the existing orchestrator, runner, and specialized
